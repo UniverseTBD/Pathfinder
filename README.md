@@ -68,7 +68,7 @@ pathfinder/
 ├── src/
 │   ├── __init__.py
 │   ├── config.py
-│   ├── llm_providers.py
+│   ├── azure_providers.py
 │   ├── embeddings.py
 │   ├── retrieval/
 │   │   ├── __init__.py
@@ -177,7 +177,7 @@ config = load_config()
 
 ### 2. LLM Providers
 
-`src/llm_providers.py` centralizes LLM and embedding model initialization:
+`src/azure_providers.py` centralizes LLM and embedding model initialization:
 
 ```python
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
