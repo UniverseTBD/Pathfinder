@@ -68,30 +68,26 @@ pathfinder/
 ├── src/
 │   ├── __init__.py
 │   ├── config.py
-│   ├── azure_providers.py
+│   ├── providers.py
 │   ├── embeddings.py
 │   ├── retrieval/
 │   │   ├── __init__.py
 │   │   ├── retrieve.py
 │   │   ├── ranker.py
 │   │   └── hyde.py
-│   ├── prompts/
-│   │   ├── __init__.py
-│   │   ├── single_paper_prompt.txt
-│   │   └── multi_paper_prompt.txt
+│   ├── prompts.py
 │   └── pipeline/
 │       ├── __init__.py
 │       ├── rag_pipeline.py
 │       └── react_pipeline.py
 ├── app/
-│   ├── app_streamlit.py
 │   ├── app_gradio.py
 │   └── ...
 ├── scripts/
 │   ├── build_faiss_index.py
 │   └── any_other_preprocessing.py
 └── tests/
-    ├── test_retrieval.py
+    ├── test_providers.py
     ├── test_embeddings.py
     └── ...
 ```
