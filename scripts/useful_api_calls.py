@@ -1,12 +1,15 @@
+import os
 from typing import Optional
 
+import yaml
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-
-from src.config import config
 
 # Constants
 DEFAULT_CHUNK_SIZE = 16
 DEFAULT_TEMPERATURE = 0.0
+
+with open(os.path.join(os.path.dirname(__file__), "..", "config.yml"), "r") as f:
+    config = yaml.safe_load(f)
 
 
 def get_openai_chat_llm(
