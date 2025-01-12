@@ -4,7 +4,7 @@ from scripts.useful_api_calls import get_openai_embeddings
 
 
 @patch(
-    "scripts.useful_api_calls.config_user",
+    "scripts.useful_api_calls.config",
     {
         "embedding_base_url": "https://example.com/",
         "embedding_deployment_name": "demo-deployment",

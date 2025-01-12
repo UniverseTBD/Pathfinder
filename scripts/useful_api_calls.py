@@ -1,3 +1,21 @@
+"""API utilities such as Azure OpenAI API for chat and embeddings.
+
+Configuration:
+    This module requires a config.yml file in the parent directory with API credentials.
+
+    1. Create a copy of config_template.yml and rename it to config.yml
+    2. Update config.yml with your API (e.g. Azure OpenAI) credentials:
+        - embedding_base_url: Your Azure OpenAI endpoint for embeddings
+        - embedding_api_key: Your API key for embeddings
+        - embedding_deployment_name: Your deployment name (e.g. "text-embedding-3-small")
+        - embedding_api_version: API version (e.g. "2023-05-15")
+        - chat_base_url: Your Azure OpenAI endpoint for chat
+        - chat_api_key: Your API key for chat
+        - chat_deployment_name: Your deployment name (e.g. "gpt-4")
+        - chat_api_version: API version (e.g. "2023-05-15")
+    3. Never commit config.yml to version control
+"""
+
 import os
 from typing import Optional
 
@@ -8,8 +26,13 @@ from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 DEFAULT_CHUNK_SIZE = 16
 DEFAULT_TEMPERATURE = 0.0
 
-with open(os.path.join(os.path.dirname(__file__), "..", "config_user.yml"), "r") as f:
-    config = yaml.safe_load(f)
+try:
+    with open(os.path.join(os.path.dirname(__file__), "..", "config.yml"), "r") as f:
+        config = yaml.safe_load(f)
+except FileNotFoundError:
+    raise FileNotFoundError(
+        "config.yml not found. Please copy config_template.yml to config.yml and update with your credentials."
+    )
 
 
 def get_openai_chat_llm(
