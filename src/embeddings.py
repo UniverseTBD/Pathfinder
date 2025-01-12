@@ -6,7 +6,7 @@ import faiss  # type: ignore
 import numpy as np
 from numpy.typing import NDArray
 
-from src.azure_providers import get_openai_embeddings
+from src.providers import get_openai_embeddings
 
 
 class EmbeddingService:
