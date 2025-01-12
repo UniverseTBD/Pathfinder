@@ -85,7 +85,8 @@ pathfinder/
 │   └── ...
 ├── scripts/
 │   ├── build_faiss_index.py
-    ├── useful_api_calls.py
+│   ├── pathfinder_dataset_loader.py
+│   ├── useful_api_calls.py
 │   └── any_other_preprocessing.py
 └── tests/
     ├── test_providers.py
