@@ -1,50 +1,80 @@
 # src/embeddings.py
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 import faiss  # type: ignore
 import numpy as np
+from numpy.typing import NDArray
 
 from src.azure_providers import get_openai_embeddings
 
 
 class EmbeddingService:
+    EMBEDDING_DIM = 1536  # OpenAI's ada-002 dimension
+
     def __init__(self):
-        self.embeddings =  get_openai_embeddings()
+        self.embeddings = get_openai_embeddings()
+        self.index: Optional[faiss.Index] = None
 
-    def embed_text(self, text: str) -> np.ndarray:
-        """Returns embedding for a single doc."""
+    def embed_text(self, text: str) -> NDArray[np.float32]:
+        """Generate embedding for a single text.
+
+        Args:
+            text: Input text to embed
+
+        Returns:
+            numpy.ndarray: Embedding vector of shape (1536,)
+        """
+        if not text:
+            return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
         embedding = self.embeddings.embed_query(text)
-        return np.array(embedding)
+        return np.array(embedding, dtype=np.float32)
 
-    def embed_text_batch(self, texts: List[str]) -> List[np.ndarray]:
-        """Batch embedding for a list of docs."""
-        # Use the built-in batch method instead of list comprehension for better performance
+    def embed_text_batch(self, texts: List[str]) -> List[NDArray[np.float32]]:
+        """Generate embeddings for multiple texts.
+
+        Args:
+            texts: List of input texts
+
+        Returns:
+            List[numpy.ndarray]: List of embedding vectors
+        """
+        if not texts:
+            return []
         embeddings = self.embeddings.embed_documents(texts)
-        return [np.array(emb) for emb in embeddings]
+        return [np.array(emb, dtype=np.float32) for emb in embeddings]
 
-    def load_faiss_index(self, index_path: str):
-        """Load a FAISS index from a file."""
-        return faiss.read_index(index_path)
+    def load_faiss_index(self, index_path: str) -> faiss.Index:
+        """Load a FAISS index from disk.
 
+        Args:
+            index_path: Path to the index file
 
-def test_embedding_service():
-    """Test function to verify the embedding service works."""
-    print("Testing EmbeddingService...")
+        Returns:
+            faiss.Index: Loaded FAISS index
+        """
+        if not Path(index_path).exists():
+            raise FileNotFoundError(f"Index file not found: {index_path}")
+        self.index = faiss.read_index(index_path)
+        return self.index
 
-    service = EmbeddingService()
+    def save_faiss_index(self, index: faiss.Index, save_path: str) -> None:
+        """Save FAISS index to disk.
 
-    # Test single embedding
-    test_text = "hello world"
-    print(f"\nTesting single embedding with text: '{test_text}'")
-    single_embedding = service.embed_text(test_text)
-    print(f"Generated embedding with shape: {single_embedding.shape}")
+        Args:
+            index: FAISS index to save
+            save_path: Path where to save the index
+        """
+        faiss.write_index(index, save_path)
 
-    # Test batch embedding
-    test_texts = ["hello world", "test text", "another example"]
-    print(f"\nTesting batch embedding with {len(test_texts)} texts")
-    batch_embeddings = service.embed_text_batch(test_texts)
-    print(f"Generated {len(batch_embeddings)} embeddings, each with shape: {batch_embeddings[0].shape}")
+    def create_index(self, dimension: int = EMBEDDING_DIM) -> faiss.Index:
+        """Create a new FAISS index.
 
+        Args:
+            dimension: Dimension of vectors to index
 
-if __name__ == "__main__":
-    test_embedding_service()
+        Returns:
+            faiss.Index: New FAISS index
+        """
+        self.index = faiss.IndexFlatL2(dimension)
+        return self.index
