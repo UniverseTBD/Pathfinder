@@ -1,0 +1,9 @@
+embedding_base_url: "MOCK_EMBEDDING_URL"
+embedding_api_key: "MOCK_EMBEDDING_KEY"
+embedding_deployment_name: "text-embedding-3-small"
+embedding_api_version: "2023-05-15"
+
+chat_base_url: "MOCK_CHAT_URL"
+chat_api_key: "MOCK_CHAT_KEY"
+chat_deployment_name: "o1-mini"
+chat_api_version: "2023-05-15"

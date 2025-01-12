@@ -8,7 +8,7 @@ from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 DEFAULT_CHUNK_SIZE = 16
 DEFAULT_TEMPERATURE = 0.0
 
-with open(os.path.join(os.path.dirname(__file__), "..", "config.yml"), "r") as f:
+with open(os.path.join(os.path.dirname(__file__), "..", "config_user.yml"), "r") as f:
     config = yaml.safe_load(f)
 
 
