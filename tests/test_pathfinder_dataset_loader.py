@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from scripts.dataset_loader import load_arxiv_corpus
+from scripts.pathfinder_dataset_loader import load_arxiv_corpus
 
 
 @pytest.fixture
@@ -33,7 +33,9 @@ def empty_dataset():
 
 def test_successful_load(mock_dataset):
     """Test successful dataset loading"""
-    with patch("scripts.dataset_loader.load_dataset", return_value=mock_dataset):
+    with patch(
+        "scripts.pathfinder_dataset_loader.load_dataset", return_value=mock_dataset
+    ):
         dataset = load_arxiv_corpus()
         assert dataset is not None
         assert len(dataset) == 100
@@ -43,7 +45,7 @@ def test_successful_load(mock_dataset):
 def test_retry_mechanism(mock_dataset):
     """Test retry mechanism on temporary failures"""
     with patch(
-        "scripts.dataset_loader.load_dataset",
+        "scripts.pathfinder_dataset_loader.load_dataset",
         side_effect=[ValueError, ValueError, mock_dataset],
     ):
         dataset = load_arxiv_corpus()
@@ -53,7 +55,9 @@ def test_retry_mechanism(mock_dataset):
 
 def test_empty_dataset(empty_dataset):
     """Test handling of empty dataset"""
-    with patch("scripts.dataset_loader.load_dataset", return_value=empty_dataset):
+    with patch(
+        "scripts.pathfinder_dataset_loader.load_dataset", return_value=empty_dataset
+    ):
         dataset = load_arxiv_corpus()
         assert dataset is not None
         assert len(dataset) == 0
@@ -62,7 +66,8 @@ def test_empty_dataset(empty_dataset):
 def test_max_retries_exceeded():
     """Test exceeding maximum retry attempts"""
     with patch(
-        "scripts.dataset_loader.load_dataset", side_effect=ValueError("Network error")
+        "scripts.pathfinder_dataset_loader.load_dataset",
+        side_effect=ValueError("Network error"),
     ):
         with pytest.raises(ValueError, match="Failed to load dataset after"):
             load_arxiv_corpus(max_retries=2)
