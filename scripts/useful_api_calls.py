@@ -31,7 +31,7 @@ try:
         config = yaml.safe_load(f)
 except FileNotFoundError:
     raise FileNotFoundError(
-        "config.yml not found. Please copy config_template.yml to config.yml and update with your credentials."
+        "config.yml not found. Please copy config_template.yml to config.yml and update with your credentials or make sure the path is correct."
     )
 
 
