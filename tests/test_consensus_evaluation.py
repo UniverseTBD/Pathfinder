@@ -54,6 +54,3 @@ def test_evaluate_overall_consensus(mock_consensus_client, mock_consensus_respon
     assert result.consensus == "Moderate Agreement Between Abstracts and Query"
     assert result.explanation.startswith("Explanation about the consensus")
     assert result.relevance_score == 0.75
-
-    # You can add further asserts to validate prompt structure if needed
-    # e.g. examining mock_consensus_client.chat.completions.create.call_args

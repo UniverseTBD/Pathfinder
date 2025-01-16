@@ -1,76 +1,83 @@
 # src/pipeline/rag_pipeline.py
-import os
-from typing import List, Literal
 
-import openai
+from typing import Optional
+
 import pandas as pd
-from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
-from langchain_openai import ChatOpenAI as openai_llm
-from pydantic import BaseModel, Field
 
-from src.embeddings import EmbeddingService
+# Local imports
 from src.prompts import (
     bibliometric_prompt,
     deep_knowledge_prompt,
-    question_categorization_prompt,
     regular_prompt,
     single_paper_prompt,
 )
+from src.providers import get_openai_chat_llm, get_openai_embeddings
 
 
-# If you have a separate "gen_llm" or "consensus_client", define them here:
-def get_gen_llm(temp=0.0):
-    return openai_llm(
-        temperature=temp,
-        model_name="gpt-4o-mini",
-        openai_api_key=os.environ["openai_key"],
-    )
-
-
-class OverallConsensusEvaluation(BaseModel):
-    rewritten_statement: str = Field(...)
-    consensus: Literal[
-        "Strong Agreement Between Abstracts and Query",
-        "Moderate Agreement Between Abstracts and Query",
-        "Weak Agreement Between Abstracts and Query",
-        "No Clear Agreement/Disagreement Between Abstracts and Query",
-        "Weak Disagreement Between Abstracts and Query",
-        "Moderate Disagreement Between Abstracts and Query",
-        "Strong Disagreement Between Abstracts and Query",
-    ] = Field(...)
-    explanation: str = Field(...)
-    relevance_score: float = Field(ge=0, le=1)
-
-
-def run_rag_qa(query: str, df: pd.DataFrame, question_type: str):
+def run_rag_qa(
+    query: str,
+    papers_df: pd.DataFrame,
+    question_type: Optional[str] = None,
+    chunk_size: int = 150,
+    chunk_overlap: int = 50,
+    top_k_chunks: int = 6,
+) -> dict:
     """
-    RAG pipeline: chunk docs, build a local vectorstore, run a chain.
-    df is the top-k papers from retrieval.
+    Perform a RAG pipeline over the given DataFrame of papers, creating chunk-level documents,
+    building a local Chroma vector store, and using a question_type-specific prompt.
+
+    If 'question_type' is not among {"Bibliometric", "Single-paper", "Broad but nuanced"},
+    we default to "Regular".
+
+    Returns a dict with:
+      "answer": The final LLM answer
+      "chunks_used": The local splitted docs used for chunk-level retrieval
     """
-    # convert df to Documents
+
+    # 1) Fallback if question_type is unrecognized
+    recognized_types = {"Bibliometric", "Single-paper", "Broad but nuanced"}
+    if not question_type or question_type not in recognized_types:
+        question_type = "Regular"
+
+    # 2) If DataFrame is empty, short-circuit so we don't build Chroma
+    if papers_df.empty:
+        return {"answer": "No documents found for this query.", "chunks_used": []}
+
+    # Convert each row to a Document, preserving e.g. ads_id
     docs = []
-    for i, row in df.iterrows():
-        content = f"Paper {i}: {row['title']}\n{row['abstract']}\n\n"
-        metadata = {"source": row["ads_id"]}  # or row.get("ads_id")
+    for i, row in papers_df.iterrows():
+        content = f"Paper {i+1}: {row.get('title', 'No Title')}\n{row.get('abstract', '')}\n\n"
+        metadata = {"source": row.get("ads_id", f"doc-{i}")}
         doc = Document(page_content=content, metadata=metadata)
         docs.append(doc)
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=50)
+    # 3) Split doc text into smaller chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap, add_start_index=True
+    )
     splits = splitter.split_documents(docs)
 
-    embed_service = EmbeddingService()
+    # If no chunks were generated, short-circuit as well
+    if not splits:
+        return {"answer": "No chunked data to build local store.", "chunks_used": []}
+
+    # 4) Build a local Chroma store from the chunked docs
+    embeddings = get_openai_embeddings()  # or mock in tests
     vectorstore = Chroma.from_documents(
-        documents=splits, embedding=embed_service.embeddings, collection_name="retdoc4"
+        documents=splits, embedding=embeddings, collection_name="rag_local_chunks"
     )
     retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs={"k": 6}
+        search_type="similarity",
+        search_kwargs={"k": top_k_chunks},
     )
 
+    # 5) Pick a prompt template
     if question_type == "Bibliometric":
         template = bibliometric_prompt
     elif question_type == "Single-paper":
@@ -80,15 +87,17 @@ def run_rag_qa(query: str, df: pd.DataFrame, question_type: str):
     else:
         template = regular_prompt
 
-    prompt = PromptTemplate.from_template(template)
-    llm = get_gen_llm(temp=0.0)
+    prompt_template = PromptTemplate.from_template(template)
+    llm = get_openai_chat_llm(temperature=0.0)
 
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
+    # Helper to join chunk contents
+    def format_docs(chunks):
+        return "\n\n".join(chunk.page_content for chunk in chunks)
 
+    # Build short chain: retrieve local chunks => prompt => LLM => parse
     rag_chain_from_docs = (
         RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
-        | prompt
+        | prompt_template
         | llm
         | StrOutputParser()
     )
@@ -97,60 +106,8 @@ def run_rag_qa(query: str, df: pd.DataFrame, question_type: str):
         {"context": retriever, "question": RunnablePassthrough()}
     ).assign(answer=rag_chain_from_docs)
 
+    # 6) Execute
     result = rag_chain_with_source.invoke(query)
     vectorstore.delete_collection()
 
-    return result  # typically a dict: { 'answer': '...' }
-
-
-def guess_question_type(query: str):
-    """
-    Use a 0-temp LLM to classify the question type.
-    """
-    categorizer = get_gen_llm(temp=0.0)
-    system_prompt = question_categorization_prompt
-    messages = [("system", system_prompt), ("user", query)]
-    resp = categorizer.invoke(messages)
-    return resp.content
-
-
-def evaluate_overall_consensus(
-    query: str, abstracts: List[str]
-) -> OverallConsensusEvaluation:
-    """
-    Creates a prompt for a specialized LLM that returns an OverallConsensusEvaluation pydantic object.
-    """
-    prompt = f"""
-    Query: {query}
-    You will be provided with {len(abstracts)} scientific abstracts. Your task is to do the following:
-    1. If the provided query is a question...
-    ...
-    Here are the abstracts:
-    {' '.join([f"Abstract {i+1}: {abstract}" for i, abstract in enumerate(abstracts)])}
-    Provide your evaluation in the structured format described above.
-    """
-
-    # If you have a special "consensus_client", do that, or just a normal openai call
-    # Here we do a direct openai call with a response_model
-    # Might require extra setup or a "patch" for instructor if using it
-    # For brevity, let's do standard openai chat:
-    # openai.api_key = os.environ["openai_key"]
-
-    # We'll just return raw text for now:
-    # (If you want pydantic validation, parse the raw text into OverallConsensusEvaluation)
-
-    messages = [
-        {
-            "role": "system",
-            "content": "You are an assistant with expertise in astrophysics...",
-        },
-        {"role": "user", "content": prompt},
-    ]
-
-    # Basic chat:
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini", messages=messages, temperature=0
-    )
-    # parse it however you want
-    text_out = response["choices"][0]["message"]["content"]
-    return text_out  # or parse into pydantic if your usage requires it
+    return {"answer": result["answer"], "chunks_used": splits[:top_k_chunks]}
