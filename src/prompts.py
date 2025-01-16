@@ -1,3 +1,11 @@
+# src/prompts.py
+
+hyde_prompt = """You are an expert astronomer. Given a scientific query, generate the abstract of an expert-level
+research paper that answers the question. Stick to a maximum length of {max_tokens} tokens
+and return just the text of the abstract and conclusion.
+Do not include labels for any section. Use research-specific jargon.
+"""
+
 react_prompt = """You are an expert astronomer and cosmologist.
     Answer the following question as best you can using information from the library, but speaking in a concise and factual manner.
     If you can not come up with an answer, say you do not know.
