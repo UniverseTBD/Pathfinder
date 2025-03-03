@@ -10,6 +10,7 @@ import pandas as pd
 from datasets import load_dataset
 
 # Local imports
+from src.config import config
 from src.nlp_utils import get_keywords, load_nlp
 from src.prompts import hyde_prompt  # or however you name it
 from src.providers import get_openai_chat_llm, get_openai_embeddings
@@ -48,8 +49,16 @@ class RetrievalSystem:
         )
 
         # 2) External clients (Cohere, OpenAI, etc.)
-        self.cohere_key = os.environ.get("cohere_key", "")
-        self.cohere_client = cohere.Client(self.cohere_key) if self.cohere_key else None
+        # Get Cohere API key from config or environment variable as fallback
+        self.cohere_key = config.get("cohere_api_key", os.environ.get("cohere_key", ""))
+        
+        # Initialize Cohere client if key is available
+        if self.cohere_key:
+            print("Initialized Cohere client for reranking")
+            self.cohere_client = cohere.Client(self.cohere_key)
+        else:
+            print("No Cohere API key found, reranking will not be available")
+            self.cohere_client = None
 
         # 3) Embeddings & Chat LLM
         self.embedding_model = get_openai_embeddings()

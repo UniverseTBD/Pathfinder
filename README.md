@@ -42,6 +42,8 @@ Key capabilities:
 - **Deep Research**: Break complex questions into sub-questions for comprehensive answers
 - **Consensus Evaluation**: Assess agreement level among retrieved papers
 - **Question Type Detection**: Automatically detect optimal processing for different questions
+- **Multi-Model Support**: Flexible support for different models like GPT-4o and various Azure OpenAI offerings
+- **Robust Error Handling**: Fallback mechanisms to ensure reliability when services fail
 
 Pathfinder complements existing tools like NASA ADS or arXiv search by allowing free-form queries and advanced summarization of results. Its modular architecture makes it adaptable to other domains beyond astronomy.
 
@@ -139,6 +141,12 @@ chat_base_url: "https://your-azure-chat-endpoint.openai.azure.com"
 chat_api_key: "your-chat-api-key"
 chat_deployment_name: "o1-mini"  # Or your preferred model
 chat_api_version: "2023-05-15"
+
+# Optional: Add additional model configurations
+chat_base_url_4omini: "https://your-gpt4o-azure-endpoint.openai.azure.com"
+chat_api_key_4omini: "your-gpt4o-api-key"
+chat_deployment_name_4omini: "gpt-4o-mini"
+chat_api_version_4omini: "2025-01-01-preview"
 ```
 
 ### 3. Running the App
@@ -181,11 +189,33 @@ config = load_config()
 
 ### 2. LLM Providers
 
-`src/azure_providers.py` centralizes LLM and embedding model initialization:
+`src/providers.py` centralizes LLM and embedding model initialization with support for multiple models:
 
 ```python
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from src.config import config
+
+def get_openai_chat_llm(deployment_name=None, temperature=0.0):
+    """Initialize Azure OpenAI Chat model with support for multiple deployments."""
+    # Check if we're explicitly requesting a specific model like GPT-4o-mini
+    if deployment_name == "gpt-4o-mini":
+        llm = AzureChatOpenAI(
+            azure_endpoint=config["chat_base_url_4omini"],
+            azure_deployment=config["chat_deployment_name_4omini"],
+            api_version=config["chat_api_version_4omini"],
+            api_key=config["chat_api_key_4omini"],
+            temperature=temperature,
+        )
+    else:
+        # Use the default model configuration
+        llm = AzureChatOpenAI(
+            azure_endpoint=config["chat_base_url"],
+            azure_deployment=deployment_name or config["chat_deployment_name"],
+            api_version=config["chat_api_version"],
+            api_key=config["chat_api_key"],
+            temperature=temperature,
+        )
+    return llm
 
 def get_openai_embeddings():
     return AzureOpenAIEmbeddings(
