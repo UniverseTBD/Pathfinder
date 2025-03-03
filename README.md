@@ -54,7 +54,7 @@ Pathfinder complements existing tools like NASA ADS or arXiv search by allowing 
 - **Modular code**: Separated into retrieval, embeddings, pipeline, and UI layers.
 - **Single config**: All credentials and environment variables kept in `config.yml`.
 - **Flexible**: Swap in different LLMs, embedding models, or re-rankers.
-- **Multiple frontends**: Streamlit, Gradio, Slack bots, etc., can hook into the same underlying library.
+- **Multiple frontends**: Gradio, Slack bots, etc., can hook into the same underlying library.
 - **Extensible**: Add scripts to build or update FAISS indexes, advanced pipelines, or custom ranking logic.
 - **Advanced retrieval methods**: HyDE (Hypothetical Document Embeddings), Cohere reranking, and weighted scoring by keywords, publication date, and citation count.
 
@@ -183,10 +183,6 @@ python -m src.run_pathfinder "What is dark matter?" --top-k 10 --keywords "galax
 
 #### Web Interface
 
-- **Streamlit version**:
-  ```bash
-  streamlit run src/app/app_streamlit.py
-  ```
 - **Gradio version**:
   ```bash
   python -m src.app.app_gradio
@@ -279,7 +275,7 @@ retrieval = RetrievalSystem()
 
 # Basic retrieval
 results, papers_df = retrieval.retrieve(
-    query="How are exoplanets detected?", 
+    query="How are exoplanets detected?",
     top_k=10
 )
 
@@ -292,7 +288,7 @@ results, papers_df = retrieval.retrieve(
     use_rerank=True,  # Use Cohere reranking
     hyde_temperature=0.5,  # Control HyDE generation creativity
     rerank_top_k=250,  # Number of candidates for reranking
-    max_doclen=250,   # Max length of generated HyDE document 
+    max_doclen=250,   # Max length of generated HyDE document
     generate_n=1,     # Number of HyDE documents to generate
 )
 ```
@@ -396,7 +392,7 @@ def main():
         result = run_pathfinder(query=query)
         st.write(result["answer"])
         st.dataframe(result["papers"])
-        
+
         if result["consensus"]:
             st.write(result["consensus"])
 
@@ -418,11 +414,24 @@ python scripts/build_faiss_index.py
 
 ### 10. Testing
 
-Run tests with `pytest`:
+The app layer provides a comprehensive test suite using pytest:
 
-```bash
+```python
+# Run all tests
 pytest tests/
+
+# Run specific test file
+pytest tests/test_retrieval_system.py
+
+# Run with verbose output
+pytest tests/ -v
 ```
+
+Each component has dedicated test files that verify functionality and handle edge cases. The test suite includes:
+
+- Unit tests for individual functions and classes
+- Integration tests for component interactions
+- Fixtures for consistent test environments
 
 ---
 
