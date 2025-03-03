@@ -489,30 +489,77 @@ You can start with a CSV or JSON file containing these fields (except for embedd
 
 ### 2. Create a Custom Dataset Script
 
-Create a new script in the `scripts/` directory to process your custom dataset:
+Use the standalone script in the `scripts/` directory to process your custom dataset:
 
 ```python
-# scripts/custom_dataset_builder.py
-import pandas as pd
+# scripts/embeddings.py
+import os
+import yaml
+import faiss
 import numpy as np
+import pandas as pd
+from typing import List, Optional
 from datasets import Dataset
 from tqdm import tqdm
-import pickle
-import os
+from pathlib import Path
+from numpy.typing import NDArray
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 
-from src.embeddings import EmbeddingService
-from src.config import config
+# Load config for embedding model
+def load_config():
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yml")
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
 
-# 1. Load your data
+# Get embedding model from config
+def get_openai_embeddings():
+    config = load_config()
+    return AzureOpenAIEmbeddings(
+        azure_endpoint=config["embedding_base_url"],
+        deployment=config["embedding_deployment_name"],
+        api_key=config["embedding_api_key"],
+        api_version=config["embedding_api_version"],
+    )
+
+class EmbeddingService:
+    EMBEDDING_DIM = 1536  # OpenAI's embedding dimension
+
+    def __init__(self):
+        self.embeddings = get_openai_embeddings()
+        self.index: Optional[faiss.Index] = None
+
+    def embed_text(self, text: str) -> NDArray[np.float32]:
+        """Generate embedding for a single text."""
+        if not text:
+            return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
+        embedding = self.embeddings.embed_query(text)
+        return np.array(embedding, dtype=np.float32)
+
+    def embed_text_batch(self, texts: List[str]) -> List[NDArray[np.float32]]:
+        """Generate embeddings for multiple texts."""
+        if not texts:
+            return []
+        embeddings = self.embeddings.embed_documents(texts)
+        return [np.array(emb, dtype=np.float32) for emb in embeddings]
+
+    def create_index(self, dimension: int = EMBEDDING_DIM) -> faiss.Index:
+        """Create a new FAISS index."""
+        self.index = faiss.IndexFlatL2(dimension)
+        return self.index
+
+# Functions for processing custom datasets
 def load_custom_data(data_path):
-    # Load from CSV, JSON, or other format
-    # Example for CSV:
-    df = pd.read_csv(data_path)
+    """Load data from CSV, JSON, or other format."""
+    if data_path.endswith('.csv'):
+        df = pd.read_csv(data_path)
+    elif data_path.endswith('.json'):
+        df = pd.read_json(data_path)
+    else:
+        raise ValueError(f"Unsupported file format: {data_path}")
     return df
 
-# 2. Process and validate the dataset
 def process_dataset(df):
-    # Ensure required columns exist
+    """Process and validate the dataset."""
     required_columns = ['title', 'abstract', 'year', 'authors']
     for col in required_columns:
         if col not in df.columns:
@@ -522,8 +569,8 @@ def process_dataset(df):
     dataset = Dataset.from_pandas(df)
     return dataset
 
-# 3. Create embeddings
 def create_embeddings(dataset, batch_size=32):
+    """Create embeddings for all documents in the dataset."""
     embedding_service = EmbeddingService()
     all_embeddings = []
     
@@ -539,8 +586,8 @@ def create_embeddings(dataset, batch_size=32):
     dataset = dataset.add_column('embed', all_embeddings)
     return dataset
 
-# 4. Create and save FAISS index
 def build_and_save_index(dataset, output_dir):
+    """Build FAISS index and save dataset."""
     os.makedirs(output_dir, exist_ok=True)
     
     # Add FAISS index
@@ -557,35 +604,36 @@ def build_and_save_index(dataset, output_dir):
     }
     
     with open(os.path.join(output_dir, 'metadata.pkl'), 'wb') as f:
+        import pickle
         pickle.dump(metadata, f)
         
     print(f"Dataset and index saved to {output_dir}")
     return dataset
 
-# Main function to run the entire pipeline
-def main(data_path, output_dir):
-    print(f"Loading data from {data_path}")
-    df = load_custom_data(data_path)
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Build a custom dataset with FAISS index")
+    parser.add_argument("--input", required=True, help="Path to input data file (CSV, JSON)")
+    parser.add_argument("--output", required=True, help="Directory to save processed dataset and index")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for embedding generation")
+    args = parser.parse_args()
+    
+    print(f"Loading data from {args.input}")
+    df = load_custom_data(args.input)
     
     print(f"Processing dataset with {len(df)} documents")
     dataset = process_dataset(df)
     
     print("Creating embeddings (this may take a while)...")
-    dataset_with_embeds = create_embeddings(dataset)
+    dataset_with_embeds = create_embeddings(dataset, batch_size=args.batch_size)
     
     print("Building and saving FAISS index...")
-    build_and_save_index(dataset_with_embeds, output_dir)
+    build_and_save_index(dataset_with_embeds, args.output)
     
     print("Done!")
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Build a custom dataset with FAISS index")
-    parser.add_argument("--input", required=True, help="Path to input data file (CSV, JSON)")
-    parser.add_argument("--output", required=True, help="Directory to save processed dataset and index")
-    args = parser.parse_args()
-    
-    main(args.input, args.output)
+    main()
 ```
 
 ### 3. Use the Custom Dataset Script
@@ -612,43 +660,167 @@ This will:
 
 ### 4. Modify the Retrieval System
 
-Create a custom version of `retrieval_system.py` that works with your local dataset instead of loading from Hugging Face:
+Create a custom version of the retrieval system that works with your local dataset:
 
 ```python
-# src/retrieval/custom_retrieval_system.py
-from src.retrieval.retrieval_system import RetrievalSystem
-from datasets import load_from_disk
+# scripts/custom_retrieval.py
 import os
+import yaml
+import numpy as np
+import pandas as pd
+from datasets import load_from_disk
+import cohere
 
-class CustomRetrievalSystem(RetrievalSystem):
+# Load config for API keys
+def load_config():
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yml")
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+    
+config = load_config()
+
+class CustomRetrievalSystem:
+    """Retrieval system for custom datasets saved with the embeddings.py script."""
+    
     def __init__(
         self,
-        dataset_path: str,
-        column_name: str = "embed",
+        dataset_path,
+        column_name="embed",
     ):
-        """
-        Initialize the RetrievalSystem with a local dataset instead of from Hugging Face.
-        
-        Args:
-            dataset_path: Path to the saved dataset directory
-            column_name: Name of the column containing embeddings
-        """
-        # Load dataset configuration from parent class
-        super().__init__()
-        
-        # Override the dataset loading
+        """Initialize with a local dataset instead of from Hugging Face."""
+        # Dataset info
         self.dataset_path = dataset_path
         self.column_name = column_name
         
-        # Load from disk instead of Hugging Face
+        # Load dataset from disk
         self.dataset = load_from_disk(self.dataset_path)
         self.dataset.add_faiss_index(column=self.column_name)
         print(f"Loaded custom dataset from '{self.dataset_path}' with FAISS index.")
+        
+        # Set up cohere client for reranking if available
+        self.cohere_key = config.get("cohere_api_key", os.environ.get("cohere_key", ""))
+        if self.cohere_key:
+            print("Initialized Cohere client for reranking")
+            self.cohere_client = cohere.Client(self.cohere_key)
+        else:
+            print("No Cohere API key found, reranking will not be available")
+            self.cohere_client = None
+            
+        # Get embedding model
+        from scripts.embeddings import get_openai_embeddings
+        self.embedding_model = get_openai_embeddings()
+        
+        # Weight toggles
+        self.weight_keywords = False
+        self.weight_date = False
+        self.weight_citation = False
+    
+    def retrieve(self, query, top_k=10, use_rerank=False):
+        """Retrieve documents relevant to the query."""
+        # Generate embedding for the query
+        query_embedding = self.embedding_model.embed_query(query)
+        
+        # Perform FAISS search
+        scores, indices = self.dataset.get_nearest_examples(
+            self.column_name, query_embedding, k=top_k
+        )
+        
+        # Convert to dataframe for easier handling
+        results = []
+        for i, idx in enumerate(indices):
+            item = self.dataset[idx]
+            results.append({
+                "title": item["title"],
+                "abstract": item["abstract"],
+                "year": item["year"],
+                "authors": item["authors"],
+                "score": scores[i],
+                # Add other fields as available in your dataset
+            })
+        
+        results_df = pd.DataFrame(results)
+        
+        # Optional reranking with Cohere
+        if use_rerank and self.cohere_client:
+            rerank_results = self.cohere_client.rerank(
+                query=query,
+                documents=results_df["abstract"].tolist(),
+                top_n=top_k,
+                model="rerank-english-v2.0"
+            )
+            
+            # Update scores based on reranking
+            reranked_indices = [r.index for r in rerank_results]
+            reranked_df = results_df.iloc[reranked_indices].copy()
+            reranked_df["score"] = [r.relevance_score for r in rerank_results]
+            return reranked_df
+        
+        return results_df
 ```
 
-### 5. Update Configuration
+### 5. Create a Custom Run Script
 
-Add the custom dataset path to your `config.yml`:
+Create a simple script to run queries against your custom dataset:
+
+```python
+# scripts/run_custom_query.py
+import argparse
+import pandas as pd
+from custom_retrieval import CustomRetrievalSystem
+
+def main():
+    parser = argparse.ArgumentParser(description="Query a custom Pathfinder dataset")
+    parser.add_argument("query", help="The query to search for")
+    parser.add_argument("--dataset", default="data/custom_dataset/dataset", 
+                      help="Path to the dataset directory")
+    parser.add_argument("--top-k", type=int, default=10, 
+                      help="Number of results to return")
+    parser.add_argument("--use-rerank", action="store_true", 
+                      help="Use Cohere reranking")
+    
+    args = parser.parse_args()
+    
+    # Initialize retrieval system
+    retrieval = CustomRetrievalSystem(dataset_path=args.dataset)
+    
+    # Retrieve results
+    results = retrieval.retrieve(
+        query=args.query,
+        top_k=args.top_k,
+        use_rerank=args.use_rerank
+    )
+    
+    # Display results
+    print(f"\nTop {len(results)} results for query: '{args.query}'\n")
+    
+    for i, row in results.iterrows():
+        print(f"{i+1}. {row['title']} ({row['year']})")
+        print(f"   Authors: {row['authors']}")
+        print(f"   Score: {row['score']:.4f}")
+        print(f"   Abstract: {row['abstract'][:200]}...")
+        print()
+
+if __name__ == "__main__":
+    main()
+```
+
+### 6. Run Queries Against Your Custom Dataset
+
+Now you can use your custom dataset with a simple command:
+
+```bash
+# Run a simple query
+python scripts/run_custom_query.py "Your query here"
+
+# Use more options
+python scripts/run_custom_query.py "Your query here" --dataset data/your_custom_dataset/dataset --top-k 5 --use-rerank
+```
+
+### 7. Integration with Existing Pathfinder (Optional)
+
+If you want to integrate your custom dataset with the existing Pathfinder system:
+
+1. Add your custom dataset path to your `config.yml`:
 
 ```yaml
 # Add to your config.yml
@@ -657,37 +829,53 @@ custom_dataset:
   use_custom: true  # Flag to use custom dataset
 ```
 
-### 6. Update the Main Run Script
-
-Modify your main script to use the custom retrieval system:
+2. Create a custom retrieval system in the src directory:
 
 ```python
-# In src/run_pathfinder.py or your main entry point
+# src/retrieval/custom_retrieval_system.py
+from src.retrieval.retrieval_system import RetrievalSystem
+from datasets import load_from_disk
 
-# Add this import and logic
+class CustomRetrievalSystem(RetrievalSystem):
+    def __init__(
+        self,
+        dataset_path,
+        column_name="embed",
+    ):
+        """Initialize with a local dataset."""
+        # Call parent __init__ but we'll override the dataset
+        super().__init__()
+        
+        # Override dataset loading
+        self.dataset = load_from_disk(dataset_path)
+        self.dataset.add_faiss_index(column=column_name)
+        print(f"Loaded custom dataset from '{dataset_path}'")
+```
+
+3. Modify the main run script:
+
+```python
+# In src/run_pathfinder.py
+
 from src.retrieval.custom_retrieval_system import CustomRetrievalSystem
 
 def run_pathfinder(query, use_custom_dataset=False, **kwargs):
-    # Choose which retrieval system to use based on configuration
-    if use_custom_dataset and config.get("custom_dataset", {}).get("use_custom", False):
-        dataset_path = config["custom_dataset"]["path"]
-        retrieval_system = CustomRetrievalSystem(dataset_path=dataset_path)
+    if use_custom_dataset:
+        dataset_path = config.get("custom_dataset", {}).get("path")
+        if dataset_path:
+            retrieval_system = CustomRetrievalSystem(dataset_path=dataset_path)
+        else:
+            retrieval_system = RetrievalSystem()  # Fallback to default
     else:
         retrieval_system = RetrievalSystem()
-    
+        
     # Continue with existing code...
 ```
 
-### 7. Run Pathfinder with Your Custom Dataset
-
-Now you can use Pathfinder with your custom dataset:
+4. Run Pathfinder with your custom dataset:
 
 ```bash
-# Use the custom dataset flag
 python -m src.run_pathfinder "Your query here" --use-custom-dataset
-
-# Or through the Gradio interface
-python -m src.app.app_gradio
 ```
 
 ## Recent Improvements
