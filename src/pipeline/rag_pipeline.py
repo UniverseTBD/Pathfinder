@@ -88,7 +88,7 @@ def run_rag_qa(
         template = regular_prompt
 
     prompt_template = PromptTemplate.from_template(template)
-    llm = get_openai_chat_llm(temperature=0.0)
+    llm = get_openai_chat_llm(deployment_name="gpt-4o-mini", temperature=0.0)
 
     # Helper to join chunk contents
     def format_docs(chunks):

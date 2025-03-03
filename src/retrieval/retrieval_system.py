@@ -77,7 +77,8 @@ class RetrievalSystem:
         rerank_top_k: int = 250,
         max_doclen: int = 250,
         generate_n: int = 1,
-    ) -> pd.DataFrame:
+        return_scores: bool = False,
+    ):
         """
         Retrieve documents relevant to `query` from the FAISS-indexed dataset,
         using original-like logic (distance->similarity, date/citation weighting, HyDE prompt, etc.).
@@ -99,9 +100,11 @@ class RetrievalSystem:
             rerank_top_k: Number of docs to retrieve from FAISS before re-ranking (default=250).
             max_doclen: The maximum token length for the hypothetical doc (default=250).
             generate_n: (Optional) how many hypothetical docs to generate for HyDE. (default=1)
+            return_scores: If True, return a dictionary of scores along with the DataFrame.
 
         Returns:
-            A DataFrame of the top_k results, sorted by final score or by Cohere rank.
+            If return_scores is False, returns a DataFrame of top_k results.
+            If return_scores is True, returns a tuple of (scores_dict, DataFrame).
         """
         toggles = toggles or []
         self.weight_keywords = "Keywords" in toggles
@@ -135,8 +138,12 @@ class RetrievalSystem:
         indices, distances = search_results.indices, search_results.scores
 
         # 3) Postprocess & Weight
-        df = self._postprocess_and_weight(indices, distances, query, top_k, use_rerank)
-        return df
+        df, scores_dict = self._postprocess_and_weight(indices, distances, query, top_k, use_rerank)
+        
+        if return_scores:
+            return scores_dict, df
+        else:
+            return df
 
     def _postprocess_and_weight(
         self,
@@ -145,7 +152,7 @@ class RetrievalSystem:
         query: str,
         top_k: int,
         use_rerank: bool,
-    ) -> pd.DataFrame:
+    ):
         """
         Convert FAISS distances to similarity, apply date/citation weighting (original style),
         apply optional Cohere re-rank, then return final top_k results.
@@ -202,9 +209,17 @@ class RetrievalSystem:
             final_indices = [r.index for r in reranked.results]
             top_df = top_df.iloc[final_indices]
             top_df = top_df.head(top_k)
-            return top_df.reset_index(drop=True)
+            
+            # Create scores dictionary for the reranked results
+            scores_dict = {idx: score for idx, score in zip(top_df.indices, top_df.final_score)}
+            
+            return top_df.reset_index(drop=True), scores_dict
 
-        return partial_df.head(top_k).reset_index(drop=True)
+        # For non-reranked results
+        top_df = partial_df.head(top_k).reset_index(drop=True)
+        scores_dict = {idx: score for idx, score in zip(partial_df.head(top_k).indices, partial_df.head(top_k).final_score)}
+        
+        return top_df, scores_dict
 
     def _get_hyde_embedding(
         self,
@@ -219,7 +234,7 @@ class RetrievalSystem:
         and return the average embedding. This matches the original style
         with a maximum token length in the prompt.
         """
-        hyde_llm = get_openai_chat_llm(temperature=temperature)
+        hyde_llm = get_openai_chat_llm(deployment_name="gpt-4o-mini")
 
         # We'll generate `generate_n` docs, then embed them
         # In the original, there's a single doc approach, but some code
@@ -228,7 +243,7 @@ class RetrievalSystem:
         for _ in range(generate_n):
             # Pass both the query and the max_tokens
             prompt_text = self.hyde_prompt.format(query=query, max_tokens=max_tokens)
-            doc = hyde_llm.predict(prompt_text)
+            doc = hyde_llm.invoke(prompt_text).content
             doc_emb = self.embedding_model.embed_query(doc)
             doc_embeddings.append(doc_emb)
 

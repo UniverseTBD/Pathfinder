@@ -25,17 +25,30 @@ def get_openai_chat_llm(
         KeyError: If required config values are missing
     """
     try:
-        llm = AzureChatOpenAI(
-            azure_endpoint=config["chat_base_url"],
-            azure_deployment=deployment_name or config["chat_deployment_name"],
-            api_version=config["chat_api_version"],
-            api_key=config["chat_api_key"],
-            temperature=temperature,
-        )
-        print(
-            f"Loaded OpenAI chat model: {deployment_name or config['chat_deployment_name']}"
-        )
-        return llm
+        # Check if we're explicitly requesting the GPT-4o-mini model
+        if deployment_name == "gpt-4o-mini":
+            llm = AzureChatOpenAI(
+                azure_endpoint=config["chat_base_url_4omini"],
+                azure_deployment=config["chat_deployment_name_4omini"],
+                api_version=config["chat_api_version_4omini"],
+                api_key=config["chat_api_key_4omini"],
+                temperature=temperature,
+            )
+            print(f"Loaded OpenAI chat model: {config['chat_deployment_name_4omini']}")
+            return llm
+        else:
+            # Use the default model configuration
+            llm = AzureChatOpenAI(
+                azure_endpoint=config["chat_base_url"],
+                azure_deployment=deployment_name or config["chat_deployment_name"],
+                api_version=config["chat_api_version"],
+                api_key=config["chat_api_key"],
+                temperature=temperature,
+            )
+            print(
+                f"Loaded OpenAI chat model: {deployment_name or config['chat_deployment_name']}"
+            )
+            return llm
     except KeyError as e:
         raise KeyError(f"Missing required configuration: {e}")
 

@@ -4,6 +4,8 @@ from datetime import datetime
 from string import punctuation
 from typing import List, Literal
 
+import chromadb
+
 # import anthropic
 import cohere
 import gradio as gr
@@ -368,6 +370,11 @@ def run_rag_qa(query, papers_df, question_type):
         doc = Document(page_content=content, metadata=metadata)
         documents.append(doc)
 
+    chromadb.api.client.SharedSystemClient.clear_system_cache()
+    try:
+        del vectorstore, splits
+    except:
+        print("no vectorstore found, initializing")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=150, chunk_overlap=50, add_start_index=True
     )
@@ -376,7 +383,7 @@ def run_rag_qa(query, papers_df, question_type):
         documents=splits, embedding=embeddings, collection_name="retdoc4"
     )
     retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs={"k": 6}
+        search_type="similarity", search_kwargs={"k": len(documents)}
     )
 
     if question_type == "Bibliometric":
@@ -608,6 +615,141 @@ def make_embedding_plot(papers_df, top_k, consensus_answer, arxiv_corpus=arxiv_c
     return fig
 
 
+def getsmallans(query, df):
+
+    allcontent = dr_smallans_prompt
+
+    smallauth = ""
+    linkstr = ""
+    for i, row in df.iterrows():
+        # content = f"Paper {i+1}: {row['title'].replace('\n',' ')}\n{row['abstract'].replace('\n',' ')}\n\n"
+        content = f"Paper ({row['authors'][0].split(',')[0]} et al. {row['date'].year}): {row['title']}\n{row['abstract']}\n\n"
+        smallauth = (
+            smallauth
+            + f"({row['authors'][0].split(',')[0]} et al. {row['date'].year}) "
+        )
+        linkstr = (
+            linkstr
+            + f"[{row['authors'][0].split(',')[0]} et al. {row['date'].year}]("
+            + row["ADS Link"].split("](")[1]
+            + " \n\n"
+        )
+        allcontent = allcontent + content
+
+    # allcontent = allcontent + '\n Question: '+query
+
+    gen_client = openai_llm(
+        temperature=0, model_name="gpt-4o-mini", openai_api_key=openai_key
+    )
+
+    messages = [
+        (
+            "system",
+            allcontent,
+        ),
+        ("human", query),
+    ]
+    smallans = gen_client.invoke(messages).content
+
+    tmplnk = linkstr.split(" \n\n")
+    linkdict = {}
+    for i in range(len(tmplnk) - 1):
+        linkdict[tmplnk[i].split("](")[0][1:]] = tmplnk[i]
+
+    for key in linkdict.keys():
+        try:
+            smallans = smallans.replace(key, linkdict[key])
+            key2 = key[0:-4] + "(" + key[-4:] + ")"
+            smallans = smallans.replace(key2, linkdict[key])
+        except:
+            print("key not found", key)
+
+    return smallans, smallauth, linkstr
+
+
+def compileinfo(query, atom_qns, atom_qn_ans, atom_qn_strs):
+
+    tmp = dr_compileinfo_prompt
+    links = ""
+    for i in range(len(atom_qn_ans)):
+        tmp = tmp + atom_qns[i] + "\n\n" + atom_qn_ans[i] + "\n\n"
+        links = links + atom_qn_strs[i] + "\n\n"
+
+    gen_client = openai_llm(
+        temperature=0, model_name="gpt-4o-mini", openai_api_key=openai_key
+    )
+
+    messages = [
+        (
+            "system",
+            tmp,
+        ),
+        ("human", query),
+    ]
+    smallans = gen_client.invoke(messages).content
+    return smallans, links
+
+
+def deep_research(question, top_k, ec):
+
+    full_answer = "## " + question
+
+    gen_client = openai_llm(
+        temperature=0, model_name="gpt-4o-mini", openai_api_key=openai_key
+    )
+    messages = [
+        (
+            "system",
+            df_atomic_prompt,
+        ),
+        ("human", question),
+    ]
+    rscope_text = gen_client.invoke(messages).content
+
+    full_answer = full_answer + " \n" + rscope_text
+
+    rscope_messages = [
+        (
+            "system",
+            """In the given text, what are the main atomic questions being asked? Please answer as a concise list.""",
+        ),
+        ("human", rscope_text),
+    ]
+    rscope_qns = gen_client.invoke(rscope_messages).content
+
+    atom_qns = []
+
+    temp = rscope_qns.split("\n")
+    for i in temp:
+        if i != "":
+            atom_qns.append(i)
+
+    atom_qn_dfs = []
+    atom_qn_ans = []
+    atom_qn_strs = []
+    for i in range(len(atom_qns)):
+        rs, small_df = ec.retrieve(atom_qns[i], top_k=top_k, return_scores=True)
+        formatted_df = ec.return_formatted_df(rs, small_df)
+        atom_qn_dfs.append(formatted_df)
+        smallans, smallauth, linkstr = getsmallans(atom_qns[i], atom_qn_dfs[i])
+
+        atom_qn_ans.append(smallans)
+        atom_qn_strs.append(linkstr)
+        full_answer = full_answer + " \n### " + atom_qns[i]
+        full_answer = full_answer + " \n" + smallans
+
+    finalans, finallinks = compileinfo(question, atom_qns, atom_qn_ans, atom_qn_strs)
+    full_answer = full_answer + " \n" + "### Summary:\n" + finalans
+
+    full_df = pd.concat(atom_qn_dfs, ignore_index=True)
+    full_df.index = full_df.index + 1
+
+    rag_answer = {}
+    rag_answer["answer"] = full_answer
+
+    return full_df, rag_answer
+
+
 def run_pathfinder(
     query,
     top_k,
@@ -657,16 +799,27 @@ def run_pathfinder(
             ec.hyde = True
             ec.rerank = True
 
-        progress(0.2, desc=search_text_list[np.random.choice(len(search_text_list))])
-        rs, small_df = ec.retrieve(query, top_k=top_k, return_scores=True)
-        formatted_df = ec.return_formatted_df(rs, small_df)
-        yield formatted_df, None, None, None, None
+        if prompt_type == "Deep Research (BETA)":
+            gr.Info(
+                "Starting deep research - this takes a few mins, so grab a drink or stretch your legs."
+            )
+            formatted_df, rag_answer = deep_research(query, top_k=top_k, ec=ec)
+            yield formatted_df, rag_answer["answer"], None, None, None
 
-        progress(0.4, desc=gen_text_list[np.random.choice(len(gen_text_list))])
-        rag_answer = run_rag_qa(query, formatted_df, prompt_type)
-        yield formatted_df, rag_answer["answer"], None, None, None
+        else:
+            # progress(0.2, desc=search_text_list[np.random.choice(len(search_text_list))])
+            gr.Info(search_text_list[np.random.choice(len(search_text_list))])
+            rs, small_df = ec.retrieve(query, top_k=top_k, return_scores=True)
+            formatted_df = ec.return_formatted_df(rs, small_df)
+            yield formatted_df, None, None, None, None
 
-        progress(0.6, desc="Generating consensus")
+            # progress(0.4, desc=gen_text_list[np.random.choice(len(gen_text_list))])
+            gr.Info(gen_text_list[np.random.choice(len(gen_text_list))])
+            rag_answer = run_rag_qa(query, formatted_df, prompt_type)
+            yield formatted_df, rag_answer["answer"], None, None, None
+
+        # progress(0.6, desc="Generating consensus")
+        gr.Info("Generating consensus")
         consensus_answer = evaluate_overall_consensus(
             query, [formatted_df["abstract"][i + 1] for i in range(len(formatted_df))]
         )
@@ -680,7 +833,8 @@ def run_pathfinder(
         )
         yield formatted_df, rag_answer["answer"], consensus, None, None
 
-        progress(0.8, desc="Analyzing question type")
+        # progress(0.8, desc="Analyzing question type")
+        gr.Info("Analyzing question type")
         question_type_gen = guess_question_type(query)
         if "<categorization>" in question_type_gen:
             question_type_gen = question_type_gen.split("<categorization>")[1]
@@ -690,7 +844,8 @@ def run_pathfinder(
         qn_type = question_type_gen
         yield formatted_df, rag_answer["answer"], consensus, qn_type, None
 
-        progress(1.0, desc="Visualizing embeddings")
+        # progress(1.0, desc="Visualizing embeddings")
+        gr.Info("Visualizing embeddings")
         fig = make_embedding_plot(formatted_df, top_k, consensus_answer)
 
         yield formatted_df, rag_answer["answer"], consensus, qn_type, fig
@@ -711,6 +866,7 @@ def create_interface():
             with gr.Tab("pathfinder"):
                 with gr.Accordion("What is Pathfinder? / How do I use it?", open=False):
                     gr.Markdown(pathfinder_text)
+                    img2 = gr.Image("local_files/galaxy_worldmap_kiyer-min.png")
 
                 with gr.Row():
                     query = gr.Textbox(label="Ask me anything")
@@ -739,6 +895,7 @@ def create_interface():
                                 "Multi-paper",
                                 "Bibliometric",
                                 "Broad but nuanced",
+                                "Deep Research (BETA)",
                             ],
                             label="Prompt Specialization",
                             value="Multi-paper",

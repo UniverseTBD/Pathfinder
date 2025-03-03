@@ -7,11 +7,60 @@ import instructor  # so we can patch OpenAI
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-# If you store your OpenAI key in an environment variable:
-openai_key = os.environ.get("openai_key", "YOUR_OPENAI_KEY")
+# Import our config
+from src.config import config
 
-# Patch the OpenAI object with instructor
-consensus_client = instructor.patch(OpenAI(api_key=openai_key))
+# Let's skip the instructor for now and use the normal OpenAI client
+from src.providers import get_openai_chat_llm
+
+# Create a temporary simple implementation without instructor
+def get_consensus(query, abstracts):
+    llm = get_openai_chat_llm(deployment_name="gpt-4o-mini")
+    
+    # Build a prompt
+    prompt = f"""
+    Query: {query}
+    You will be provided with {len(abstracts)} scientific abstracts. Your task:
+    1. If the query is a question, rewrite it as a statement. 
+    2. Choose one consensus level:
+        - Strong/Moderate/Weak Agreement
+        - No Clear Agreement/Disagreement
+        - Strong/Moderate/Weak Disagreement
+    3. Provide an explanation (up to six sentences).
+    4. Assign a relevance score [0..1].
+    Here are the abstracts:
+    {''.join(f"Abstract {i+1}: {abs_}\n" for i, abs_ in enumerate(abstracts))}
+    """
+    
+    result = llm.invoke(prompt).content
+    
+    # Parse the result
+    parts = result.split("\n")
+    rewritten = next((p for p in parts if p.strip().startswith("Rewritten") or p.strip().startswith("Statement")), "")
+    consensus = next((p for p in parts if p.strip().startswith("Consensus")), "")
+    explanation = next((p for p in parts if p.strip().startswith("Explanation")), "")
+    relevance = next((p for p in parts if p.strip().startswith("Relevance")), "")
+    
+    # Extract the score
+    try:
+        score = float(relevance.split(":")[-1].strip())
+    except:
+        score = 0.5  # Default
+    
+    # Create a result object like OverallConsensusEvaluation
+    class ConsensusResult:
+        def __init__(self, rewritten, consensus, explanation, relevance_score):
+            self.rewritten_statement = rewritten
+            self.consensus = consensus
+            self.explanation = explanation
+            self.relevance_score = relevance_score
+    
+    return ConsensusResult(
+        rewritten.split(":", 1)[-1].strip() if ":" in rewritten else rewritten,
+        consensus.split(":", 1)[-1].strip() if ":" in consensus else consensus,
+        explanation.split(":", 1)[-1].strip() if ":" in explanation else explanation,
+        score
+    )
 
 
 class OverallConsensusEvaluation(BaseModel):
@@ -50,11 +99,9 @@ class OverallConsensusEvaluation(BaseModel):
 
 def evaluate_overall_consensus(
     query: str, abstracts: List[str]
-) -> OverallConsensusEvaluation:
+):
     """
-    Evaluate the overall consensus between a user query and a list of scientific abstracts,
-    returning an OverallConsensusEvaluation object. Uses the 'consensus_client' (instructor-patched OpenAI)
-    to generate the structured response.
+    Evaluate the overall consensus between a user query and a list of scientific abstracts.
 
     Steps:
     1. Rewrite the query as a statement (if it's originally a question).
@@ -67,7 +114,7 @@ def evaluate_overall_consensus(
         abstracts (List[str]): A list of scientific abstracts (strings).
 
     Returns:
-        OverallConsensusEvaluation: The final structured evaluation.
+        ConsensusResult: An object containing the consensus evaluation.
 
     Example usage:
         from src.evaluation.consensus_evaluation import evaluate_overall_consensus
@@ -78,46 +125,5 @@ def evaluate_overall_consensus(
         )
         print(consensus.consensus, consensus.explanation)
     """
-
-    # Build a prompt to instruct the LLM how to respond
-    # (Mirrors the style of the original code)
-    prompt = f"""
-    Query: {query}
-    You will be provided with {len(abstracts)} scientific abstracts. Your task:
-    1. If the query is a question, rewrite it as a statement. Output as 'Rewritten Statement:'.
-    2. Choose one consensus level:
-        - Strong/Moderate/Weak Agreement
-        - No Clear Agreement/Disagreement
-        - Strong/Moderate/Weak Disagreement
-       Output as 'Consensus:'.
-    3. Provide an explanation (up to six sentences). Output as 'Explanation:'.
-    4. Assign a relevance score [0..1]. Output as 'Relevance Score:'.
-    Here are the abstracts:
-    {''.join(f"Abstract {i+1}: {abs_}\n" for i, abs_ in enumerate(abstracts))}
-
-    Return your answer in the structured format:
-      Rewritten Statement: ...
-      Consensus: ...
-      Explanation: ...
-      Relevance Score: ...
-    """
-
-    # Use the instructor-patched OpenAI client
-    # Note: model="gpt-4o-mini" or any model you prefer
-    # 'response_model=OverallConsensusEvaluation' is how 'instructor' can parse it into pydantic
-    response = consensus_client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_model=OverallConsensusEvaluation,
-        messages=[
-            {
-                "role": "system",
-                "content": """You are an assistant with expertise in astrophysics for question-answering tasks.
-                Evaluate the overall consensus among the provided abstracts regarding a given query.
-                If uncertain, say you don't know. Keep your explanation concise.""",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-    )
-
-    return response
+    # Use our simpler implementation for now
+    return get_consensus(query, abstracts)
