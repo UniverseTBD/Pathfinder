@@ -149,15 +149,51 @@ chat_deployment_name_4omini: "gpt-4o-mini"
 chat_api_version_4omini: "2025-01-01-preview"
 ```
 
-### 3. Running the App
+### 3. Running Pathfinder
+
+#### Command Line Usage
+
+You can use Pathfinder directly from the command line:
+
+```bash
+# Basic usage
+python -m src.run_pathfinder "What is dark matter?"
+
+# Specify number of papers to retrieve
+python -m src.run_pathfinder "What is dark matter?" --top-k 5
+
+# Specify additional keywords to guide the search
+python -m src.run_pathfinder "What is dark matter?" --keywords "galaxy,rotation"
+
+# Specify the prompt type
+python -m src.run_pathfinder "What is dark matter?" --prompt-type "Multi-paper"
+
+# Specify the retrieval method
+python -m src.run_pathfinder "What is dark matter?" --rag-type "Semantic Search"
+
+# Full example with all options
+python -m src.run_pathfinder "What is dark matter?" --top-k 10 --keywords "galaxy,rotation" --toggles Keywords Time --prompt-type "Multi-paper" --rag-type "Semantic + HyDE + CoHERE"
+```
+
+#### Available Options
+
+- `--top-k`: Number of papers to retrieve (default: 10)
+- `--keywords`: Additional keywords to guide the search, comma-separated
+- `--toggles`: Weight toggles, can be "Keywords", "Time", or "Citations"
+- `--prompt-type`: Type of prompt to use
+  - Options: "Auto", "Single-paper", "Multi-paper", "Bibliometric", "Broad but nuanced", "Deep Research (BETA)"
+- `--rag-type`: Type of retrieval method to use
+  - Options: "Semantic Search", "Semantic + HyDE", "Semantic + CoHERE", "Semantic + HyDE + CoHERE"
+
+#### Web Interface
 
 - **Streamlit version**:
   ```bash
-  streamlit run app/app_streamlit.py
+  streamlit run src/app/app_streamlit.py
   ```
 - **Gradio version**:
   ```bash
-  python app/app_gradio.py
+  python -m src.app.app_gradio
   ```
 
 ---
@@ -419,6 +455,24 @@ pytest tests/
 This project is licensed under the [MIT License](LICENSE).
 
 ---
+
+## Recent Improvements
+
+The latest version of Pathfinder includes several significant improvements:
+
+1. **Multi-Model Support**: Added support for different LLM models including o1-mini and gpt-4o-mini with flexible configuration.
+
+2. **Enhanced Retrieval**: Integrated Cohere reranking to improve search result quality and relevance.
+
+3. **Structured Output Generation**: Implemented robust structured output using the Instructor library with fallback mechanisms.
+
+4. **Improved Configuration System**: Updated the configuration to better handle multiple API keys and models in a consistent way.
+
+5. **More Robust Error Handling**: Added comprehensive error handling throughout the system to gracefully recover from failures.
+
+6. **Command-line Interface**: Extended the command-line interface to support all retrieval and model options.
+
+7. **Updated Documentation**: Comprehensive documentation for running Pathfinder from command line with all available options.
 
 ## Acknowledgments
 
