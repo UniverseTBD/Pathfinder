@@ -381,20 +381,33 @@ consensus = result["consensus"]      # Consensus evaluation
 The app layer provides user interfaces using Streamlit or Gradio:
 
 ```python
-# app/app_streamlit.py
-import streamlit as st
+# app/app_gradio.py
+import gradio as gr
+import pandas as pd
 from src.run_pathfinder import run_pathfinder
 
-def main():
-    st.title("Pathfinder Demo")
-    query = st.text_input("Ask a question:")
-    if query:
-        result = run_pathfinder(query=query)
-        st.write(result["answer"])
-        st.dataframe(result["papers"])
+def process_query(query):
+    result = run_pathfinder(query=query)
+    consensus = result["consensus"] if result["consensus"] else ""
+    return result["answer"], result["papers"].to_html(), consensus
 
-        if result["consensus"]:
-            st.write(result["consensus"])
+def main():
+    with gr.Blocks() as demo:
+        gr.Markdown("# Pathfinder Demo")
+        with gr.Row():
+            query = gr.Textbox(label="Ask a question:")
+        with gr.Row():
+            submit_btn = gr.Button("Submit")
+        with gr.Row():
+            answer_box = gr.Markdown(label="Answer")
+        with gr.Row():
+            papers_html = gr.HTML(label="Retrieved Papers")
+        with gr.Row():
+            consensus_box = gr.Markdown(label="Consensus")
+            
+        submit_btn.click(process_query, inputs=query, outputs=[answer_box, papers_html, consensus_box])
+    
+    demo.launch()
 
 if __name__ == "__main__":
     main()
