@@ -80,6 +80,7 @@ pathfinder/
 │   ├── providers.py
 │   ├── embeddings.py
 │   ├── nlp_utils.py
+│   ├── run_pathfinder.py
 │   ├── retrieval/
 │   │   ├── __init__.py
 │   │   ├── retrieval_system.py
