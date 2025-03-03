@@ -118,7 +118,7 @@ pathfinder/
 
 1. **Clone** this repo:
    ```bash
-   git clone https://github.com/<username>/pathfinder.git
+   git clone git@github.com:UniverseTBD/Pathfinder.git
    cd pathfinder
    ```
 
