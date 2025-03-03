@@ -58,7 +58,7 @@ Pathfinder complements existing tools like NASA ADS or arXiv search by allowing 
 
 ## Features
 
-- **Modular code**: Separated into retrieval, embeddings, pipeline, and UI layers.
+- **Modular code**: Separated into retrieval, pipeline, and UI layers.
 - **Single config**: All credentials and environment variables kept in `config.yml`.
 - **Flexible**: Swap in different LLMs, embedding models, or re-rankers.
 - **Multiple frontends**: Gradio, Slack bots, etc., can hook into the same underlying library.
