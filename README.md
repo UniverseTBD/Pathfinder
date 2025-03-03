@@ -473,98 +473,221 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Using Custom Datasets
 
-Pathfinder can be easily adapted to work with your own dataset. Here's how to integrate a custom corpus:
+Pathfinder can be adapted to work with your own dataset. Here's a guide to integrating a custom corpus:
 
 ### 1. Prepare Your Dataset
 
-Your dataset should be in a structured format, ideally a CSV or JSON file with at least the following fields:
-- `id`: Unique identifier for each document
+Your dataset should follow the structure expected by Hugging Face's dataset library, with the following fields:
 - `title`: Document title
-- `abstract`: Document abstract or summary
-- `year`: Publication year
-- `authors`: List of authors
-- `url`: Link to the original document (optional)
-- `citations`: Citation count (optional, used for citation-based weighting)
+- `abstract`: Document content or summary
+- `year`: Publication year (numeric)
+- `authors`: List of authors 
+- `citations`: Citation count (optional, for citation-based weighting)
+- `embed`: Pre-computed embeddings (will be added in step 2)
 
-Example CSV structure:
+You can start with a CSV or JSON file containing these fields (except for embeddings which will be computed later).
+
+### 2. Create a Custom Dataset Script
+
+Create a new script in the `scripts/` directory to process your custom dataset:
+
+```python
+# scripts/custom_dataset_builder.py
+import pandas as pd
+import numpy as np
+from datasets import Dataset
+from tqdm import tqdm
+import pickle
+import os
+
+from src.embeddings import EmbeddingService
+from src.config import config
+
+# 1. Load your data
+def load_custom_data(data_path):
+    # Load from CSV, JSON, or other format
+    # Example for CSV:
+    df = pd.read_csv(data_path)
+    return df
+
+# 2. Process and validate the dataset
+def process_dataset(df):
+    # Ensure required columns exist
+    required_columns = ['title', 'abstract', 'year', 'authors']
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing required column: {col}")
+    
+    # Convert to dataset
+    dataset = Dataset.from_pandas(df)
+    return dataset
+
+# 3. Create embeddings
+def create_embeddings(dataset, batch_size=32):
+    embedding_service = EmbeddingService()
+    all_embeddings = []
+    
+    # Process in batches to avoid memory issues
+    for i in tqdm(range(0, len(dataset), batch_size)):
+        batch = dataset[i:i+batch_size]
+        texts = [doc['abstract'] for doc in batch]
+        # Generate embeddings for this batch
+        embeddings = embedding_service.embed_text_batch(texts)
+        all_embeddings.extend(embeddings)
+    
+    # Add embeddings to dataset
+    dataset = dataset.add_column('embed', all_embeddings)
+    return dataset
+
+# 4. Create and save FAISS index
+def build_and_save_index(dataset, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Add FAISS index
+    dataset.add_faiss_index(column='embed')
+    
+    # Save dataset and metadata
+    dataset.save_to_disk(os.path.join(output_dir, 'dataset'))
+    
+    # Create metadata for retrieval
+    metadata = {
+        'dataset_name': 'custom',
+        'count': len(dataset),
+        'created_date': pd.Timestamp.now().isoformat()
+    }
+    
+    with open(os.path.join(output_dir, 'metadata.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+        
+    print(f"Dataset and index saved to {output_dir}")
+    return dataset
+
+# Main function to run the entire pipeline
+def main(data_path, output_dir):
+    print(f"Loading data from {data_path}")
+    df = load_custom_data(data_path)
+    
+    print(f"Processing dataset with {len(df)} documents")
+    dataset = process_dataset(df)
+    
+    print("Creating embeddings (this may take a while)...")
+    dataset_with_embeds = create_embeddings(dataset)
+    
+    print("Building and saving FAISS index...")
+    build_and_save_index(dataset_with_embeds, output_dir)
+    
+    print("Done!")
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Build a custom dataset with FAISS index")
+    parser.add_argument("--input", required=True, help="Path to input data file (CSV, JSON)")
+    parser.add_argument("--output", required=True, help="Directory to save processed dataset and index")
+    args = parser.parse_args()
+    
+    main(args.input, args.output)
 ```
-id,title,abstract,year,authors,url,citations
-paper1,"Title 1","Abstract text...",2023,"Author A, Author B",https://example.com/paper1,10
-paper2,"Title 2","Abstract text...",2022,"Author C",https://example.com/paper2,5
-```
 
-### 2. Build the FAISS Index
+### 3. Use the Custom Dataset Script
 
-Use the provided script to build a FAISS index from your dataset:
+Run the script to process your data and create the necessary FAISS index:
 
 ```bash
-# Basic usage
-python scripts/build_faiss_index.py --input your_dataset.csv --output data/custom_index
+# Create a virtual environment if you haven't already
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Advanced options
-python scripts/build_faiss_index.py --input your_dataset.csv --output data/custom_index --text-field abstract --id-field id --batch-size 100
+# Install dependencies
+pip install -r requirements.txt
+
+# Process your custom dataset
+python scripts/custom_dataset_builder.py --input your_data.csv --output data/custom_dataset
 ```
 
-The script will:
-1. Load your dataset
+This will:
+1. Load your custom dataset
 2. Generate embeddings for each document using the configured embedding model
 3. Build a FAISS index for fast similarity search
-4. Save the index and metadata to the specified output location
+4. Save the dataset and index to the specified output location
 
-### 3. Configure Pathfinder to Use Your Index
+### 4. Modify the Retrieval System
 
-Update your `config.yml` to point to your custom index:
+Create a custom version of `retrieval_system.py` that works with your local dataset instead of loading from Hugging Face:
+
+```python
+# src/retrieval/custom_retrieval_system.py
+from src.retrieval.retrieval_system import RetrievalSystem
+from datasets import load_from_disk
+import os
+
+class CustomRetrievalSystem(RetrievalSystem):
+    def __init__(
+        self,
+        dataset_path: str,
+        column_name: str = "embed",
+    ):
+        """
+        Initialize the RetrievalSystem with a local dataset instead of from Hugging Face.
+        
+        Args:
+            dataset_path: Path to the saved dataset directory
+            column_name: Name of the column containing embeddings
+        """
+        # Load dataset configuration from parent class
+        super().__init__()
+        
+        # Override the dataset loading
+        self.dataset_path = dataset_path
+        self.column_name = column_name
+        
+        # Load from disk instead of Hugging Face
+        self.dataset = load_from_disk(self.dataset_path)
+        self.dataset.add_faiss_index(column=self.column_name)
+        print(f"Loaded custom dataset from '{self.dataset_path}' with FAISS index.")
+```
+
+### 5. Update Configuration
+
+Add the custom dataset path to your `config.yml`:
 
 ```yaml
 # Add to your config.yml
-dataset:
-  faiss_index_path: "data/custom_index/faiss.index"
-  metadata_path: "data/custom_index/metadata.pkl"
-  dataset_type: "custom"
+custom_dataset:
+  path: "data/custom_dataset/dataset"  # Path to the saved dataset
+  use_custom: true  # Flag to use custom dataset
 ```
 
-### 4. Run Pathfinder with Your Dataset
+### 6. Update the Main Run Script
+
+Modify your main script to use the custom retrieval system:
+
+```python
+# In src/run_pathfinder.py or your main entry point
+
+# Add this import and logic
+from src.retrieval.custom_retrieval_system import CustomRetrievalSystem
+
+def run_pathfinder(query, use_custom_dataset=False, **kwargs):
+    # Choose which retrieval system to use based on configuration
+    if use_custom_dataset and config.get("custom_dataset", {}).get("use_custom", False):
+        dataset_path = config["custom_dataset"]["path"]
+        retrieval_system = CustomRetrievalSystem(dataset_path=dataset_path)
+    else:
+        retrieval_system = RetrievalSystem()
+    
+    # Continue with existing code...
+```
+
+### 7. Run Pathfinder with Your Custom Dataset
 
 Now you can use Pathfinder with your custom dataset:
 
 ```bash
-python -m src.run_pathfinder "Your query here" --dataset custom
-```
+# Use the custom dataset flag
+python -m src.run_pathfinder "Your query here" --use-custom-dataset
 
-Or use the Gradio interface which will automatically detect your custom dataset:
-
-```bash
+# Or through the Gradio interface
 python -m src.app.app_gradio
-```
-
-### 5. Customizing the Dataset Loader (Advanced)
-
-For more complex datasets or special preprocessing needs, you can extend the `dataset_loader.py` module:
-
-1. Create a new class that inherits from `BaseDatasetLoader`
-2. Implement the required methods to load and process your data
-3. Register your custom loader in the dataset factory
-
-Example custom loader implementation:
-```python
-from src.dataset_loader import BaseDatasetLoader, register_dataset_loader
-
-@register_dataset_loader("my_custom_format")
-class MyCustomDatasetLoader(BaseDatasetLoader):
-    def __init__(self, config):
-        super().__init__(config)
-        # Custom initialization
-        
-    def load_data(self):
-        # Custom data loading logic
-        return my_dataframe
-```
-
-Then update your config to use the custom loader:
-```yaml
-dataset:
-  type: "my_custom_format"
-  # Other dataset-specific configuration
 ```
 
 ## Recent Improvements
