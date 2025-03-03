@@ -24,7 +24,7 @@ def guess_question_type(query: str) -> str:
     """
     from src.prompts import question_categorization_prompt
     
-    llm = get_openai_chat_llm(deployment_name="gpt-4o-mini", temperature=0)
+    llm = get_openai_chat_llm(temperature=0)
     messages = [
         ("system", question_categorization_prompt),
         ("human", query),

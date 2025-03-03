@@ -138,12 +138,7 @@ embedding_deployment: "text-embedding-3-small"
 embedding_deployment_name: "text-embedding-3-small"
 embedding_api_version: "2023-05-15"
 
-chat_base_url: "https://your-azure-chat-endpoint.openai.azure.com"
-chat_api_key: "your-chat-api-key"
-chat_deployment_name: "o1-mini"  # Or your preferred model
-chat_api_version: "2023-05-15"
-
-# Optional: Add additional model configurations
+# GPT-4o-mini Configuration
 chat_base_url_4omini: "https://your-gpt4o-azure-endpoint.openai.azure.com"
 chat_api_key_4omini: "your-gpt4o-api-key"
 chat_deployment_name_4omini: "gpt-4o-mini"
@@ -226,32 +221,22 @@ config = load_config()
 
 ### 2. LLM Providers
 
-`src/providers.py` centralizes LLM and embedding model initialization with support for multiple models:
+`src/providers.py` centralizes LLM and embedding model initialization, focusing on gpt-4o-mini for all LLM operations:
 
 ```python
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from src.config import config
 
 def get_openai_chat_llm(deployment_name=None, temperature=0.0):
-    """Initialize Azure OpenAI Chat model with support for multiple deployments."""
-    # Check if we're explicitly requesting a specific model like GPT-4o-mini
-    if deployment_name == "gpt-4o-mini":
-        llm = AzureChatOpenAI(
-            azure_endpoint=config["chat_base_url_4omini"],
-            azure_deployment=config["chat_deployment_name_4omini"],
-            api_version=config["chat_api_version_4omini"],
-            api_key=config["chat_api_key_4omini"],
-            temperature=temperature,
-        )
-    else:
-        # Use the default model configuration
-        llm = AzureChatOpenAI(
-            azure_endpoint=config["chat_base_url"],
-            azure_deployment=deployment_name or config["chat_deployment_name"],
-            api_version=config["chat_api_version"],
-            api_key=config["chat_api_key"],
-            temperature=temperature,
-        )
+    """Initialize Azure OpenAI Chat model (always using gpt-4o-mini)."""
+    # Always use gpt-4o-mini for all operations
+    llm = AzureChatOpenAI(
+        azure_endpoint=config["chat_base_url_4omini"],
+        azure_deployment=config["chat_deployment_name_4omini"],
+        api_version=config["chat_api_version_4omini"],
+        api_key=config["chat_api_key_4omini"],
+        temperature=temperature,
+    )
     return llm
 
 def get_openai_embeddings():
@@ -461,19 +446,19 @@ This project is licensed under the [MIT License](LICENSE).
 
 The latest version of Pathfinder includes several significant improvements:
 
-1. **Multi-Model Support**: Added support for different LLM models including o1-mini and gpt-4o-mini with flexible configuration.
+1. **Streamlined Model Integration**: Now exclusively using gpt-4o-mini for all language model operations, providing optimal performance and consistency.
 
-2. **Enhanced Retrieval**: Integrated Cohere reranking to improve search result quality and relevance.
+2. **Enhanced UI**: Completely redesigned Gradio interface with a modern dark theme for better readability and user experience.
 
-3. **Structured Output Generation**: Implemented robust structured output using the Instructor library with fallback mechanisms.
+3. **Improved Project Structure**: Reorganized repository structure with cleaner separation of concerns and more intuitive file layout.
 
-4. **Improved Configuration System**: Updated the configuration to better handle multiple API keys and models in a consistent way.
+4. **Enhanced Retrieval**: Refined Cohere reranking to improve search result quality and relevance.
 
-5. **More Robust Error Handling**: Added comprehensive error handling throughout the system to gracefully recover from failures.
+5. **Structured Output Generation**: Implemented robust structured output with fallback mechanisms for consistent results.
 
-6. **Command-line Interface**: Extended the command-line interface to support all retrieval and model options.
+6. **More Robust Error Handling**: Added comprehensive error handling throughout the system to gracefully recover from failures.
 
-7. **Updated Documentation**: Comprehensive documentation for running Pathfinder from command line with all available options.
+7. **Command-line Interface**: Streamlined command-line interface with clear documentation for all available options.
 
 ## Acknowledgments
 

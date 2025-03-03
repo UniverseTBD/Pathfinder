@@ -3,7 +3,8 @@ embedding_api_key: "MOCK_EMBEDDING_KEY"
 embedding_deployment_name: "text-embedding-3-small"
 embedding_api_version: "2023-05-15"
 
-chat_base_url: "MOCK_CHAT_URL"
-chat_api_key: "MOCK_CHAT_KEY"
-chat_deployment_name: "o1-mini"
-chat_api_version: "2023-05-15"
+# GPT-4o-mini Configuration
+chat_base_url_4omini: "MOCK_CHAT_URL"
+chat_api_key_4omini: "MOCK_CHAT_KEY"
+chat_deployment_name_4omini: "gpt-4o-mini"
+chat_api_version_4omini: "2025-01-01-preview"
