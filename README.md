@@ -1,6 +1,6 @@
-# Pathfinder
+# Pathfinder-Lite
 
-**A Semantic Framework for Literature Review and Knowledge Discovery in Astronomy**
+**A (lite) Semantic Framework for Literature Review and Knowledge Discovery in Astronomy**
 
 Pathfinder is a modular, retrieval-augmented generation (RAG) tool for doing semantic search and question-answering on a large corpus of astronomy papers. It leverages modern Large Language Models (LLMs), vector embeddings, and optional re-ranking to deliver relevant papers and concise answers to astronomy-related queries.
 
