@@ -22,8 +22,15 @@ Pathfinder is a modular, retrieval-augmented generation (RAG) tool for doing sem
   - [6. App Layer](#6-app-layer)
   - [7. Scripts Folder](#7-scripts-folder)
   - [8. Testing](#8-testing)
+- [Using Custom Datasets](#using-custom-datasets)
+  - [1. Prepare Your Dataset](#1-prepare-your-dataset)
+  - [2. Build the FAISS Index](#2-build-the-faiss-index)
+  - [3. Configure Pathfinder](#3-configure-pathfinder-to-use-your-index)
+  - [4. Run Pathfinder](#4-run-pathfinder-with-your-dataset)
+  - [5. Customizing the Dataset Loader](#5-customizing-the-dataset-loader-advanced)
 - [Contributing](#contributing)
 - [License](#license)
+- [Recent Improvements](#recent-improvements)
 - [Acknowledgments](#acknowledgments)
 
 ---
@@ -464,6 +471,102 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
+## Using Custom Datasets
+
+Pathfinder can be easily adapted to work with your own dataset. Here's how to integrate a custom corpus:
+
+### 1. Prepare Your Dataset
+
+Your dataset should be in a structured format, ideally a CSV or JSON file with at least the following fields:
+- `id`: Unique identifier for each document
+- `title`: Document title
+- `abstract`: Document abstract or summary
+- `year`: Publication year
+- `authors`: List of authors
+- `url`: Link to the original document (optional)
+- `citations`: Citation count (optional, used for citation-based weighting)
+
+Example CSV structure:
+```
+id,title,abstract,year,authors,url,citations
+paper1,"Title 1","Abstract text...",2023,"Author A, Author B",https://example.com/paper1,10
+paper2,"Title 2","Abstract text...",2022,"Author C",https://example.com/paper2,5
+```
+
+### 2. Build the FAISS Index
+
+Use the provided script to build a FAISS index from your dataset:
+
+```bash
+# Basic usage
+python scripts/build_faiss_index.py --input your_dataset.csv --output data/custom_index
+
+# Advanced options
+python scripts/build_faiss_index.py --input your_dataset.csv --output data/custom_index --text-field abstract --id-field id --batch-size 100
+```
+
+The script will:
+1. Load your dataset
+2. Generate embeddings for each document using the configured embedding model
+3. Build a FAISS index for fast similarity search
+4. Save the index and metadata to the specified output location
+
+### 3. Configure Pathfinder to Use Your Index
+
+Update your `config.yml` to point to your custom index:
+
+```yaml
+# Add to your config.yml
+dataset:
+  faiss_index_path: "data/custom_index/faiss.index"
+  metadata_path: "data/custom_index/metadata.pkl"
+  dataset_type: "custom"
+```
+
+### 4. Run Pathfinder with Your Dataset
+
+Now you can use Pathfinder with your custom dataset:
+
+```bash
+python -m src.run_pathfinder "Your query here" --dataset custom
+```
+
+Or use the Gradio interface which will automatically detect your custom dataset:
+
+```bash
+python -m src.app.app_gradio
+```
+
+### 5. Customizing the Dataset Loader (Advanced)
+
+For more complex datasets or special preprocessing needs, you can extend the `dataset_loader.py` module:
+
+1. Create a new class that inherits from `BaseDatasetLoader`
+2. Implement the required methods to load and process your data
+3. Register your custom loader in the dataset factory
+
+Example custom loader implementation:
+```python
+from src.dataset_loader import BaseDatasetLoader, register_dataset_loader
+
+@register_dataset_loader("my_custom_format")
+class MyCustomDatasetLoader(BaseDatasetLoader):
+    def __init__(self, config):
+        super().__init__(config)
+        # Custom initialization
+        
+    def load_data(self):
+        # Custom data loading logic
+        return my_dataframe
+```
+
+Then update your config to use the custom loader:
+```yaml
+dataset:
+  type: "my_custom_format"
+  # Other dataset-specific configuration
+```
+
 ## Recent Improvements
 
 The latest version of Pathfinder includes several significant improvements:
@@ -481,6 +584,8 @@ The latest version of Pathfinder includes several significant improvements:
 6. **More Robust Error Handling**: Added comprehensive error handling throughout the system to gracefully recover from failures.
 
 7. **Command-line Interface**: Streamlined command-line interface with clear documentation for all available options.
+
+8. **Custom Dataset Support**: Added support for integrating and searching custom document collections.
 
 ## Acknowledgments
 
