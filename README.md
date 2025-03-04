@@ -95,7 +95,6 @@ pathfinder/
 │   └── pipeline/
 │       ├── __init__.py
 │       ├── rag_pipeline.py
-│       └── react_pipeline.py
 ├── app/
 │   ├── app_gradio.py
 │   └── ...
