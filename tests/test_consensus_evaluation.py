@@ -1,6 +1,6 @@
 # tests/test_consensus_evaluation.py
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -24,14 +24,18 @@ def mock_consensus_response():
     )
 
 
-@patch("src.consensus_evaluation.consensus_client")
-def test_evaluate_overall_consensus(mock_consensus_client, mock_consensus_response):
+@patch("src.consensus_evaluation.get_instructor_client")
+def test_evaluate_overall_consensus(mock_get_instructor_client, mock_consensus_response):
     """
     Test that evaluate_overall_consensus returns a valid OverallConsensusEvaluation
     object, given a list of abstracts, by mocking out the instructor client.
     """
+    # Mock the instructor client instance
+    mock_instructor_client = Mock()
+    mock_get_instructor_client.return_value = mock_instructor_client
+    
     # Mock the .chat.completions.create(...) method to return our mock response
-    mock_consensus_client.chat.completions.create.return_value = mock_consensus_response
+    mock_instructor_client.chat.completions.create.return_value = mock_consensus_response
 
     query = "What is the mass of typical dark matter halos?"
     abstracts = [
@@ -42,10 +46,10 @@ def test_evaluate_overall_consensus(mock_consensus_client, mock_consensus_respon
     # Call the function under test
     result = evaluate_overall_consensus(query, abstracts)
 
-    # Verify we invoked the consensus_client with the correct structure
+    # Verify we invoked the instructor client with the correct structure
     assert (
-        mock_consensus_client.chat.completions.create.called
-    ), "Expected the consensus_client to be called with .chat.completions.create(...)"
+        mock_instructor_client.chat.completions.create.called
+    ), "Expected the instructor client to be called with .chat.completions.create(...)"
 
     # Check that we got a valid OverallConsensusEvaluation
     assert isinstance(
