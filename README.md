@@ -80,7 +80,6 @@ pathfinder/
 ├── data/
 │   ├── ...
 │   └── (local data files, e.g. FAISS indexes)
-├── local_files/
 ├── src/
 │   ├── __init__.py
 │   ├── config.py
