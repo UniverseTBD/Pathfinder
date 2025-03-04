@@ -99,7 +99,7 @@ pathfinder/
 │   ├── app_gradio.py
 │   └── ...
 ├── scripts/
-│   ├── build_faiss_index.py
+│   ├── embeddings.py
 │   ├── pathfinder_dataset_loader.py
 │   ├── useful_api_calls.py
 │   └── any_other_preprocessing.py
