@@ -9,6 +9,7 @@ import yaml
 from langchain_openai import AzureOpenAIEmbeddings
 from numpy.typing import NDArray
 
+DEFAULT_CHUNK_SIZE = 16
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.yml")
 
 
@@ -18,6 +19,8 @@ def load_config(path: str = CONFIG_PATH) -> dict:
         data = yaml.safe_load(f)
     return data
 
+
+config = load_config()
 
 print("Config was loaded.")
 

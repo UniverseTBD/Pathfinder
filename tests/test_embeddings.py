@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.embeddings import EmbeddingService
+from scripts.embeddings import EmbeddingService
 
 
 @pytest.fixture
