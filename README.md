@@ -85,7 +85,6 @@ pathfinder/
 │   ├── __init__.py
 │   ├── config.py
 │   ├── providers.py
-│   ├── embeddings.py
 │   ├── nlp_utils.py
 │   ├── run_pathfinder.py
 │   ├── retrieval/
